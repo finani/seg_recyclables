@@ -134,74 +134,68 @@ if __name__=="__main__":
 
 
 
-  # Set Configures
-  # target_classes = Utils.get_classes()
-  target_classes = ['Background', 'Battery'] # It must include 'Background' to make model correctly
-  batch_size = 5
-  number_workcer = 4
-  epochs = 10
-  learning_rate = 1e-4
+  for class_name in Utils.get_classes()[1:]:
+    # Set Configures
+    # target_classes = Utils.get_classes()
+    target_classes = ['Background'] # It must include 'Background' to make model correctly
+    target_classes.append(class_name)
+    batch_size = 5
+    number_worker = 4
+    epochs = 10
+    learning_rate = 1e-4
 
+    # Make Model
+    model_manager = ModelManager()
+    model = model_manager.make_deeplabv3plus_model(encoder='resnet101',
+                                                  encoder_weights='imagenet',
+                                                  class_number=len(target_classes),
+                                                  activation=None,
+                                                  multi_gpu=False
+                                                  )
 
+    # Load Dataset
+    data_manager = DataManager(dataset_path='/home/weebee/recyclables/baseline/input')
+    data_manager.assignDataLoaders(batch_size=batch_size,
+                                  shuffle=True,
+                                  number_worker=number_worker,
+                                  drop_last=False,
+                                  transform=CustomAugmentation.to_tensor_transform(),
+                                  target_segmentation=True,
+                                  target_classes=target_classes
+                                  )
 
-  # Make Model
-  model_manager = ModelManager()
-  model = model_manager.make_deeplabv3plus_model(encoder='resnet101',
-                                                 encoder_weights='imagenet',
-                                                 class_number=len(target_classes),
-                                                 activation=None,
-                                                 multi_gpu=False
-                                                 )
+    criterion = smp.utils.losses.CrossEntropyLoss()
+    # criterion = smp.utils.losses.BCEWithLogitsLoss()
+    # criterion = tgm.losses.DiceLoss()
+    # criterion = DiceLoss()
+    # criterion = smp.utils.losses.JaccardLoss()
 
+    optimizer = torch.optim.Adam([dict(params=model.parameters(),
+                                      lr=learning_rate
+                                      ),
+    ])
 
+    lr_scheduler = None
+    # lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
+    #     optimizer, max_lr=0.01, steps_per_epoch=10, epochs=epochs, anneal_strategy='cos'
+    # )
+    # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+    #     optimizer, T_0=1, T_mult=2, eta_min=5e-5,
+    # )
+    # lr_scheduler = CustomCosineAnnealingWarmUpRestarts(
+    #     optimizer, T_0=20, T_mult=1, eta_max=0.1,  T_up=2, gamma=0.5
+    # )
 
-  # Load Dataset
-  data_manager = DataManager(dataset_path='/home/weebee/recyclables/baseline/input')
-  data_manager.assignDataLoaders(batch_size=batch_size,
-                                 shuffle=True,
-                                 number_worker=number_workcer,
-                                 drop_last=False,
-                                 transform=CustomAugmentation.to_tensor_transform(),
-                                 target_segmentation=True,
-                                 target_classes=target_classes
-                                 )
-
-
-
-  criterion = smp.utils.losses.CrossEntropyLoss()
-  # criterion = smp.utils.losses.BCEWithLogitsLoss()
-  # criterion = tgm.losses.DiceLoss()
-  # criterion = DiceLoss()
-  # criterion = smp.utils.losses.JaccardLoss()
-
-  optimizer = torch.optim.Adam([dict(params=model.parameters(),
-                                     lr=learning_rate
-                                     ),
-  ])
-
-  lr_scheduler = None
-  # lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
-  #     optimizer, max_lr=0.01, steps_per_epoch=10, epochs=epochs, anneal_strategy='cos'
-  # )
-  # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-  #     optimizer, T_0=1, T_mult=2, eta_min=5e-5,
-  # )
-  # lr_scheduler = CustomCosineAnnealingWarmUpRestarts(
-  #     optimizer, T_0=20, T_mult=1, eta_max=0.1,  T_up=2, gamma=0.5
-  # )
-
-
-
-  # Run Train
-  train_manager = TrainManager()
-  train_manager.run_train(model=model,
-                          num_epochs=epochs,
-                          data_loader=data_manager.train_data_loader,
-                          val_loader=data_manager.val_data_loader,
-                          criterion=criterion,
-                          optimizer=optimizer,
-                          lr_scheduler=lr_scheduler,
-                          save_dir=save_dir,
-                          file_name='best_model_target_' + '_'.join(target_classes[1:]) +'_1.pt',
-                          val_every=1
-                          )
+    # Run Train
+    train_manager = TrainManager()
+    train_manager.run_train(model=model,
+                            num_epochs=epochs,
+                            data_loader=data_manager.train_data_loader,
+                            val_loader=data_manager.val_data_loader,
+                            criterion=criterion,
+                            optimizer=optimizer,
+                            lr_scheduler=lr_scheduler,
+                            save_dir=save_dir,
+                            file_name='best_model_target_' + '_'.join(target_classes[1:]) +'_1.pt',
+                            val_every=1
+                            )

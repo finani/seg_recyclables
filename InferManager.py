@@ -119,25 +119,10 @@ class InferManager:
     submission_path = os.path.join(save_dir, submission_file_name)
     submission.to_csv(submission_path, index=False)
 
-  def make_submission_binary(self, model, dataset_dir, save_dir, submission_file_name):
-    data_manager = DataManager(dataset_path=dataset_dir)
+  def make_submission_binary(self, model, test_data_loader, save_dir, submission_file_name):
     preds_list = []
     for class_name in Utils.get_classes()[1:]:
-      class_name = 'Paper' # TODO: remove & test
-      # Load Dataset
-      test_dataset = CustomDataset(dataset_dir=data_manager.dataset_path,
-                                  json_file_name='test.json',
-                                  mode='test',
-                                  transform=CustomAugmentation.to_tensor_transform(),
-                                  target_segmentation=True,
-                                  target_classes=[class_name]
-                                  )
-      test_data_loader = data_manager.make_data_loader(dataset=test_dataset,
-                                                      batch_size=20,
-                                                      shuffle=False,
-                                                      number_worker=4,
-                                                      drop_last=False
-                                                      )
+      print("\n\tClass: {}\n".format(class_name))
 
       # Load Weights
       model = self.load_saved_model_weight(model=model,
@@ -151,7 +136,6 @@ class InferManager:
                                         binary_segmentation=True
                                         ) # output=logits, file_number=837, [file_number,size*size]=[837, 65536]
       preds_list.append(preds/255.0) # output=logits [class_number=11, file_number, size*size]
-      break # TODO: remove & test
 
     preds_np = np.array(preds_list) # [class_number, file_number, size*size] = [11, 837, 65536]
     preds_fg = np.argmax(preds_np, axis=0) + 1 # [file_number, size*size] = [837, 65536]
@@ -159,35 +143,89 @@ class InferManager:
     preds_bg = np.where(np.min(preds_bg_temp, axis=0) == 0, 1, 0)
     preds = (1-preds_bg) * preds_fg
 
-    # fig, (ax1, ax2, ax3, ax4) = plt.subplots(nrows=1, ncols=4, figsize=(16, 16))
 
-    # # for idx in range(5): # file_number
-    # idx = 16 # 4, 16, 19
-    # # Original image
-    # im1 = ax1.imshow(preds_np[0][idx].reshape(256,256), cmap='gray') # [class_number=0, file_number=idx
-    # ax1.grid(False)
-    # ax1.set_title("Original image : {}".format(file_names[idx]), fontsize = 15)
-    # plt.colorbar(mappable=im1, ax=ax1)
 
-    # # Predicted forground
-    # im2 = ax2.imshow(preds_fg[idx].reshape(256,256), cmap='gray')
-    # ax2.grid(False)
-    # ax2.set_title("Predicted : {}".format(file_names[idx]), fontsize = 15)
-    # plt.colorbar(mappable=im2, ax=ax2)
+    idx = [4, 16, 19]
 
-    # # Predicted background
-    # im3 = ax3.imshow(preds_bg[idx].reshape(256,256), cmap='gray')
-    # ax3.grid(False)
-    # ax3.set_title("Predicted : {}".format(file_names[idx]), fontsize = 15)
-    # plt.colorbar(mappable=im3, ax=ax3)
+    fig, ((ax11, ax12, ax13, ax14), (ax21, ax22, ax23, ax24), (ax31, ax32, ax33, ax34)) = plt.subplots(nrows=3, ncols=4, figsize=(16, 16))
 
-    # # Predicted image
-    # im4 = ax4.imshow(preds[idx].reshape(256,256), cmap='gray')
-    # ax4.grid(False)
-    # ax4.set_title("Predicted : {}".format(file_names[idx]), fontsize = 15)
-    # plt.colorbar(mappable=im4, ax=ax4)
+    # Original image
+    im11 = ax11.imshow(preds_np[0][idx[0]].reshape(256,256), cmap='gray') # [class_number=0, file_number=idx
+    ax11.grid(False)
+    ax11.set_title("Original image : {}".format(file_names[idx[0]]), fontsize = 15)
+    plt.colorbar(mappable=im11, ax=ax11)
 
-    # plt.show()
+    # Predicted forground
+    im12 = ax12.imshow(preds_fg[idx[0]].reshape(256,256), cmap='gray')
+    ax12.grid(False)
+    ax12.set_title("Predicted : {}".format(file_names[idx[0]]), fontsize = 15)
+    plt.colorbar(mappable=im12, ax=ax12)
+
+    # Predicted background
+    im13 = ax13.imshow(preds_bg[idx[0]].reshape(256,256), cmap='gray')
+    ax13.grid(False)
+    ax13.set_title("Predicted : {}".format(file_names[idx[0]]), fontsize = 15)
+    plt.colorbar(mappable=im13, ax=ax13)
+
+    # Predicted image
+    im14 = ax14.imshow(preds[idx[0]].reshape(256,256), cmap='gray')
+    ax14.grid(False)
+    ax14.set_title("Predicted : {}".format(file_names[idx[0]]), fontsize = 15)
+    plt.colorbar(mappable=im14, ax=ax14)
+
+
+    # Original image
+    im21 = ax21.imshow(preds_np[0][idx[1]].reshape(256,256), cmap='gray') # [class_number=0, file_number=idx
+    ax21.grid(False)
+    ax21.set_title("Original image : {}".format(file_names[idx[1]]), fontsize = 15)
+    plt.colorbar(mappable=im21, ax=ax21)
+
+    # Predicted forground
+    im22 = ax22.imshow(preds_fg[idx[1]].reshape(256,256), cmap='gray')
+    ax22.grid(False)
+    ax22.set_title("Predicted : {}".format(file_names[idx[1]]), fontsize = 15)
+    plt.colorbar(mappable=im22, ax=ax22)
+
+    # Predicted background
+    im23 = ax23.imshow(preds_bg[idx[1]].reshape(256,256), cmap='gray')
+    ax23.grid(False)
+    ax23.set_title("Predicted : {}".format(file_names[idx[1]]), fontsize = 15)
+    plt.colorbar(mappable=im23, ax=ax23)
+
+    # Predicted image
+    im24 = ax24.imshow(preds[idx[1]].reshape(256,256), cmap='gray')
+    ax24.grid(False)
+    ax24.set_title("Predicted : {}".format(file_names[idx[1]]), fontsize = 15)
+    plt.colorbar(mappable=im24, ax=ax24)
+
+
+    # Original image
+    im31 = ax31.imshow(preds_np[0][idx[2]].reshape(256,256), cmap='gray') # [class_number=0, file_number=idx
+    ax31.grid(False)
+    ax31.set_title("Original image : {}".format(file_names[idx[2]]), fontsize = 15)
+    plt.colorbar(mappable=im31, ax=ax31)
+
+    # Predicted forground
+    im32 = ax32.imshow(preds_fg[idx[2]].reshape(256,256), cmap='gray')
+    ax32.grid(False)
+    ax32.set_title("Predicted : {}".format(file_names[idx[2]]), fontsize = 15)
+    plt.colorbar(mappable=im32, ax=ax32)
+
+    # Predicted background
+    im33 = ax33.imshow(preds_bg[idx[2]].reshape(256,256), cmap='gray')
+    ax33.grid(False)
+    ax33.set_title("Predicted : {}".format(file_names[idx[2]]), fontsize = 15)
+    plt.colorbar(mappable=im33, ax=ax33)
+
+    # Predicted image
+    im34 = ax34.imshow(preds[idx[2]].reshape(256,256), cmap='gray')
+    ax34.grid(False)
+    ax34.set_title("Predicted : {}".format(file_names[idx[2]]), fontsize = 15)
+    plt.colorbar(mappable=im34, ax=ax34)
+
+    plt.show()
+
+
 
     submission = pd.DataFrame()
     submission['image_id'] = file_names
@@ -271,10 +309,26 @@ if __name__=="__main__":
 
 
 
+  # Load Dataset
+  data_manager = DataManager(dataset_path=dataset_dir)
+  test_dataset = CustomDataset(dataset_dir=data_manager.dataset_path,
+                              json_file_name='test.json',
+                              mode='test',
+                              transform=CustomAugmentation.to_tensor_transform()
+                              )
+  test_data_loader = data_manager.make_data_loader(dataset=test_dataset,
+                                                  batch_size=30,
+                                                  shuffle=False,
+                                                  number_worker=4,
+                                                  drop_last=False
+                                                  )
+
+
+
   # Make Submission for binary segmentation
   infer_manager = InferManager()
   infer_manager.make_submission_binary(model=model,
-                                       dataset_dir=dataset_dir,
+                                       test_data_loader=test_data_loader,
                                        save_dir=save_dir,
                                        submission_file_name='submission.csv'
                                        )
