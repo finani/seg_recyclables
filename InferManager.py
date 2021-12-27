@@ -7,6 +7,7 @@ import torch
 import numpy as np
 import pandas as pd
 
+import wandb
 import matplotlib.pyplot as plt
 import albumentations as A
 
@@ -68,9 +69,6 @@ class InferManager:
                 ax2.set_title("Mask : {}".format(
                     image_info['file_name']), fontsize=15)
                 plt.colorbar(mappable=im2, ax=ax2)
-
-                plt.savefig(os.path.join(save_dir, '_'.join([v.lower() for v in class_name_list[1:]]) + '_' + mode + '_' + str(data_index) + '.png'))
-                plt.show()
             else:
                 for imgs, masks, image_infos in data_loader:
                     image_info = image_infos[data_index]
@@ -114,8 +112,17 @@ class InferManager:
                       int(class_number)]} for class_number in list(np.unique(image_predicted))]), fontsize=15)
                 plt.colorbar(mappable=im3, ax=ax3)
 
-                plt.savefig(os.path.join(save_dir, '_'.join([v.lower() for v in class_name_list[1:]]) + '_' + mode + '_' + str(data_index) + '.png'))
-                plt.show()
+            fig_name = os.path.join(save_dir, '_'.join(
+                [v.lower() for v in class_name_list[1:]]) + '_' + mode + '_' + str(data_index) + '.png')
+            plt.savefig(fig_name)
+            plt.show()
+            run_predicted_image = wandb.Image(
+                fig_name,
+                caption='run_predict image'
+            )
+            wandb.log({
+                "run_predicted Image": run_predicted_image,
+            })
 
     def run_test(self, model, data_loader, binary_segmentation=False):
         size = 256
@@ -296,7 +303,16 @@ class InferManager:
             file_names[idx[2]]), fontsize=15)
         plt.colorbar(mappable=im34, ax=ax34)
 
+        fig_name = os.path.join(save_dir, 'submission.png')
+        plt.savefig(fig_name)
         plt.show()
+        submission_image = wandb.Image(
+            fig_name,
+            caption='submission image'
+        )
+        wandb.log({
+            "submission Image": submission_image,
+        })
 
         submission = pd.DataFrame()
         submission['image_id'] = file_names
@@ -309,7 +325,6 @@ class InferManager:
 
 
 if __name__ == "__main__":
-    # path, shuffle, batch_size, run_predict, make_submission
     project_dir = '/home/weebee/recyclables/baseline'
     dataset_dir = os.path.join(project_dir, 'input')
     save_dir = os.path.join(project_dir, 'saved')
@@ -365,14 +380,28 @@ if __name__ == "__main__":
     #     test_loader=test_data_loader
     # )
 
+    config_dict = {
+        'project_name': 'test',
+        'run_name': '[IM] All Binary Classes',
+        'network': 'DeepLabV3Plus',
+        'encoder': 'resnet101',
+        'encoder_weights': 'imagenet',
+        'activation': None,
+        'multi_gpu': False,
+        'batch_size': 30,
+        'learning_rate': 1e-4,
+        'number_worker': 4,
+        'note': 'test infer'
+    }
+
     # Make Model for binary segmentation
     model_manager = ModelManager()
     model = model_manager.make_deeplabv3plus_model(
-        encoder='resnet101',
-        encoder_weights='imagenet',
+        encoder=config_dict['encoder'],
+        encoder_weights=config_dict['encoder_weights'],
         class_number=2,
-        activation=None,
-        multi_gpu=False
+        activation=config_dict['activation'],
+        multi_gpu=config_dict['multi_gpu']
     )
 
     # Load Dataset
@@ -385,9 +414,9 @@ if __name__ == "__main__":
     )
     test_data_loader = data_manager.make_data_loader(
         dataset=test_dataset,
-        batch_size=30,
+        batch_size=config_dict['batch_size'],
         shuffle=False,
-        number_worker=4,
+        number_worker=config_dict['number_worker'],
         drop_last=False
     )
 
