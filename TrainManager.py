@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 
 import os
+import sys
+from datetime import datetime
+from dateutil.tz import gettz
 
 import torch
 import numpy as np
+from tqdm import tqdm
 
 import segmentation_models_pytorch as smp
 from torch.optim import lr_scheduler
 
 import Utils
 from ModelManager import ModelManager
-from DataManager import DataManager, CustomDataset, CustomAugmentation
+from DataManager import DataManager, CustomAugmentation
 from LossManager import DiceLoss
 from LearningRateManager import CustomCosineAnnealingWarmUpRestarts
 
@@ -18,70 +22,79 @@ class TrainManager:
   def __init__(self):
     self.device = Utils.get_device()
 
-  def run_train(self, model, num_epochs, data_loader, val_loader, criterion, optimizer, lr_scheduler, save_dir, file_name, val_every=1):
-    print('Start training..')
+  def run_train(self, model, num_epochs, data_loader, val_loader, criterion, optimizer, lr_scheduler, save_dir, file_name, class_number, val_every=1):
+    print('\nStart training..')
+    print('num_epochs: {}'.format(num_epochs))
+    print('save_dir: {}'.format(save_dir))
+    print('file_name: {}'.format(file_name))
+    print('val_every: {}'.format(val_every))
+    print('')
     best_loss = 9999999
     for epoch in range(num_epochs):
-      # print(lr_scheduler.get_lr())
-      print(optimizer.param_groups[0]['lr'])
       model.train()
-      for step, (images, masks, image_infos) in enumerate(data_loader):
-        images = torch.stack(images)       # (batch, channel, height, width)
-        masks = torch.stack(masks).long()  # (batch, channel, height, width)
+      loss_list = []
+      with tqdm(data_loader) as pbar:
+        pbar.set_description('Epoch: {}/{}, Time: {}, lr: {}'.format(epoch, num_epochs, datetime.now(gettz('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S'), optimizer.param_groups[0]['lr']))
+        for images, masks, image_infos in pbar:
+          images = torch.stack(images)       # (batch, channel, height, width)
+          masks = torch.stack(masks).long()  # (batch, channel, height, width)
 
-        images, masks = images.to(self.device), masks.to(self.device)
-        outputs = model(images)
+          images, masks = images.to(self.device), masks.to(self.device)
+          outputs = model(images)
 
-        # compute the loss
-        loss = criterion(outputs, masks)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+          # compute the loss
+          loss = criterion(outputs, masks)
+          optimizer.zero_grad()
+          loss.backward()
+          optimizer.step()
 
-        # print the loss at 25 step intervals.
-        if (step + 1) % 25 == 0:
-          print('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'.format(
-            epoch+1, num_epochs, step+1, len(data_loader), loss.item()))
+          loss_list.append(loss.item())
+          pbar.set_postfix(loss=loss.item(), mean_loss=np.mean(loss_list))
 
       if lr_scheduler is not None:
         lr_scheduler.step()
 
       # print the loss and save the best model at val_every intervals.
       if (epoch + 1) % val_every == 0:
-        avrg_loss = self.run_validation(model, epoch + 1, val_loader, criterion)
+        avrg_loss = self.run_validation(model, epoch + 1, val_loader, criterion, class_number)
         if avrg_loss < best_loss:
           print('Best performance at epoch: {}'.format(epoch + 1))
           print('Save model in', save_dir)
           best_loss = avrg_loss
           self.save_model(model=model, save_dir=save_dir, file_name=file_name)
 
-  def run_validation(self, model, epoch, data_loader, criterion):
-      print('Start validation #{}'.format(epoch))
+    return model
+
+  def run_validation(self, model, epoch, data_loader, criterion, class_number):
+      print('\nStart validation #{}'.format(epoch))
       model.eval()
       with torch.no_grad():
-          total_loss = 0
-          cnt = 0
-          mIoU_list = []
-          for step, (images, masks, _) in enumerate(data_loader):
+        total_loss = 0
+        cnt = 0
+        mIoU_list = []
+        with tqdm(data_loader) as pbar:
+          pbar.set_description('Epoch: {}'.format(epoch))
+          for images, masks, _ in pbar:
 
-              images = torch.stack(images)       # (batch, channel, height, width)
-              masks = torch.stack(masks).long()  # (batch, channel, height, width)
+            images = torch.stack(images)       # (batch, channel, height, width)
+            masks = torch.stack(masks).long()  # (batch, channel, height, width)
 
-              images, masks = images.to(self.device), masks.to(self.device)
+            images, masks = images.to(self.device), masks.to(self.device)
 
-              outputs = model(images)
-              loss = criterion(outputs, masks)
-              total_loss += loss
-              cnt += 1
+            outputs = model(images)
+            loss = criterion(outputs, masks)
+            total_loss += loss
+            cnt += 1
 
-              outputs = torch.nn.functional.softmax(outputs, dim=1) # add
-              outputs = torch.argmax(outputs.squeeze(), dim=1).detach().cpu().numpy()
+            outputs = torch.nn.functional.softmax(outputs, dim=1) # add
+            outputs = torch.argmax(outputs.squeeze(), dim=1).detach().cpu().numpy()
 
-              mIoU = self.label_accuracy_score(masks.detach().cpu().numpy(), outputs, n_class=12)[2]
-              mIoU_list.append(mIoU)
+            mIoU = self.label_accuracy_score(masks.detach().cpu().numpy(), outputs, n_class=class_number)[2]
+            mIoU_list.append(mIoU)
+            pbar.set_postfix(mIoU_batch=mIoU, mIoU_all=np.mean(mIoU_list))
 
           avrg_loss = total_loss / cnt
-          print('Validation #{}  Average Loss: {:.4f}, mIoU: {:.4f}'.format(epoch, avrg_loss, np.mean(mIoU_list)))
+          print('Validation #{}  Average Loss: {:.4f}, mIoU_all: {:.4f}'.format(epoch, avrg_loss, np.mean(mIoU_list)))
 
       return avrg_loss
 
@@ -128,21 +141,28 @@ class TrainManager:
 if __name__=="__main__":
   Utils.fix_random_seed(random_seed=21)
 
-  save_dir = '/home/weebee/recyclables/baseline/saved'
+  project_dir = '/home/weebee/recyclables/baseline'
+  dataset_dir = os.path.join(project_dir, 'input')
+  save_dir = os.path.join(project_dir, 'saved')
+  if not os.path.isdir(dataset_dir):
+      sys.exit('check dataset path!!')
   if not os.path.isdir(save_dir):
       os.mkdir(save_dir)
 
 
 
+  batch_size = 5
+  number_worker = 4
+  epochs = 10
+  learning_rate = 1e-4
+
+
+
   for class_name in Utils.get_classes()[1:]:
     # Set Configures
-    # target_classes = Utils.get_classes()
-    target_classes = ['Background'] # It must include 'Background' to make model correctly
-    target_classes.append(class_name)
-    batch_size = 5
-    number_worker = 4
-    epochs = 10
-    learning_rate = 1e-4
+    target_classes = Utils.get_classes()
+    # target_classes = ['Background'] # It must include 'Background' to make model correctly
+    # target_classes.append(class_name)
 
     # Make Model
     model_manager = ModelManager()
@@ -154,7 +174,7 @@ if __name__=="__main__":
                                                   )
 
     # Load Dataset
-    data_manager = DataManager(dataset_path='/home/weebee/recyclables/baseline/input')
+    data_manager = DataManager(dataset_path=dataset_dir)
     data_manager.assignDataLoaders(batch_size=batch_size,
                                   shuffle=True,
                                   number_worker=number_worker,
@@ -196,6 +216,8 @@ if __name__=="__main__":
                             optimizer=optimizer,
                             lr_scheduler=lr_scheduler,
                             save_dir=save_dir,
-                            file_name='best_model_target_' + '_'.join(target_classes[1:]) +'_1.pt',
+                            # file_name='best_model_target_' + '_'.join(target_classes[1:]) +'_1.pt',
+                            file_name='best_model_1.pt',
+                            class_number=len(target_classes),
                             val_every=1
                             )
