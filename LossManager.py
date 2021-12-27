@@ -2,6 +2,8 @@
 
 import torch
 
+# https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
+
 
 class DiceLoss(torch.nn.Module):
     def __init__(self) -> None:
