@@ -4,6 +4,8 @@ import torch
 
 # https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
 
+# https://gaussian37.github.io/dl-concept-focal_loss/
+
 
 class DiceLoss(torch.nn.Module):
     def __init__(self) -> None:

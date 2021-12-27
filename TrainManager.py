@@ -76,12 +76,14 @@ class TrainManager:
             if (epoch + 1) % config_dict['val_every'] == 0:
                 avrg_loss = self.run_validation(
                     model, epoch + 1, val_loader, criterion, len(config_dict['target_classes']))
-                if avrg_loss < best_loss:
-                    print('Best performance at epoch: {}'.format(epoch + 1))
+                if (avrg_loss < best_loss) or (epoch%10 == 0):
+                    print('Best performance at epoch or X0th epoch: {}'.format(epoch + 1))
                     print('Save model in', save_dir)
                     best_loss = avrg_loss
+                    file_name_new = file_name.split('.')
+                    file_name_new = file_name_new[0] + '_' + str(epoch) + file_name_new[-1]
                     self.save_model(
-                        model=model, save_dir=save_dir, file_name=file_name)
+                        model=model, save_dir=save_dir, file_name=file_name_new)
 
         return model
 
@@ -123,7 +125,7 @@ class TrainManager:
                         mIoU_batch=mIoU, mIoU_all=np.mean(mIoU_list))
 
                 avrg_loss = total_loss / cnt
-                print('Validation #{}  Average Loss: {:.4f}, mIoU_all: {:.4f}'.format(
+                print('\nValidation #{}  Average Loss: {:.4f}, mIoU_all: {:.4f}'.format(
                     epoch, avrg_loss, np.mean(mIoU_list)))
 
                 oImage = images[0:4].permute([0, 2, 3, 1]).detach().cpu().numpy()
@@ -281,6 +283,6 @@ if __name__ == "__main__":
             optimizer=optimizer,
             lr_scheduler=lr_scheduler,
             save_dir=save_dir,
-            file_name='best_model_target_' + '_'.join([v.lower() for v in target_classes[1:]]) +'_2.pt',
+            file_name='best_model_target_' + '_'.join([v.lower() for v in target_classes[1:]]) +'.pt',
             # file_name='best_model_1.pt'
         )
