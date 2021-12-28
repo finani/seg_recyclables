@@ -46,9 +46,6 @@ class TrainManager:
             with tqdm(data_loader) as pbar_train:
                 pbar_train.set_description('Epoch: {}/{}, Time: {}, lr: {}'.format(epoch, config_dict['num_epochs'], datetime.now(
                     gettz('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S'), optimizer.param_groups[0]['lr']))
-                wandb.log({
-                    "learning_rate": optimizer.param_groups[0]['lr']
-                })
                 for images, masks, image_infos in pbar_train:
                     # (batch, channel, height, width)
                     images = torch.stack(images)
@@ -75,19 +72,19 @@ class TrainManager:
             # print the loss and save the best model at val_every intervals.
             if (epoch + 1) % config_dict['val_every'] == 0:
                 avrg_loss = self.run_validation(
-                    model, epoch + 1, val_loader, criterion, len(config_dict['target_classes']))
+                    model, epoch + 1, val_loader, criterion, len(config_dict['target_classes']), optimizer.param_groups[0]['lr'])
                 if (avrg_loss < best_loss) or (epoch%10 == 0):
                     print('Best performance at epoch or X0th epoch: {}'.format(epoch + 1))
                     print('Save model in', save_dir)
                     best_loss = avrg_loss
                     file_name_new = file_name.split('.')
-                    file_name_new = file_name_new[0] + '_' + str(epoch) + file_name_new[-1]
+                    file_name_new = file_name_new[0] + '_' + str(epoch) + '.' + file_name_new[-1]
                     self.save_model(
                         model=model, save_dir=save_dir, file_name=file_name_new)
 
         return model
 
-    def run_validation(self, model, epoch, data_loader, criterion, class_number):
+    def run_validation(self, model, epoch, data_loader, criterion, class_number, learning_rate):
         print('\nStart validation #{}'.format(epoch))
         model.eval()
         with torch.no_grad():
@@ -147,6 +144,7 @@ class TrainManager:
                     "original Image": original_image,
                     "mask Image": mask_image,
                     "predicted Image": predicted_image,
+                    "learning_rate": learning_rate,
                     "Average Loss": avrg_loss,
                     "acc_all": np.mean(acc_list),
                     "mIoU_all": np.mean(mIoU_list)

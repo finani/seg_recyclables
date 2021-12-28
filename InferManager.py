@@ -220,7 +220,7 @@ class InferManager:
             print(file_number)
 
             fig, axs = plt.subplots(nrows=len(file_number), ncols=4, figsize=(40, 40))
-            font_size = 20
+            font_size = 14
             for idx in range(len(file_number)):
                 # Original image
                 im1 = axs[idx][0].imshow(img.imread(os.path.join(dataset_dir, file_names_list[idx][file_number[idx]])))
@@ -366,6 +366,7 @@ if __name__ == "__main__":
     infer_manager.make_submission_binary(
         model=model,
         test_data_loader=test_data_loader,
+        dataset_dir=dataset_dir,
         save_dir=save_dir,
         submission_file_name='submission.csv',
         threshold_bg=0.5
