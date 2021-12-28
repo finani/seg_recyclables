@@ -283,6 +283,24 @@ class CustomAugmentation:
         ]
         return A.Compose(transform)
 
+    def medium_transform_v2():
+        transform = [
+            A.RandomSizedCrop(min_max_height=(50, 101),
+                                height=512, width=512, p=0.5),
+            A.HorizontalFlip(p=0.5),
+            A.VerticalFlip(p=0.5),
+            A.RandomRotate90(p=0.5),
+            A.Transpose(p=0.5),
+            A.OneOf([
+                A.ElasticTransform(p=0.5, alpha=120, sigma=120 *
+                                   0.05, alpha_affine=120 * 0.03),
+                A.GridDistortion(p=0.5),
+                A.OpticalDistortion(distort_limit=1, shift_limit=0.5, p=0.5),
+            ], p=0.5),
+            ToTensor(),
+        ]
+        return A.Compose(transform)
+
 
 if __name__ == "__main__":
     data_manager = DataManager(
