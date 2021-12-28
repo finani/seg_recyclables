@@ -6,6 +6,7 @@ from datetime import datetime
 from dateutil.tz import gettz
 
 import torch
+from torch._C import parse_schema
 from torch.optim import lr_scheduler
 import numpy as np
 from tqdm import tqdm
@@ -26,7 +27,7 @@ class TrainManager:
         if wandb_api_key_login is True:
             wandb.login(wandb_api_key)
 
-    def run_train(self, model, config_dict, data_loader, val_loader, criterion, optimizer, lr_scheduler, save_dir, file_name):
+    def run_train(self, model, config_dict, data_loader, val_loader, criterion, optimizer, lr_scheduler, save_dir, file_name, target_only_p=0.0):
         print('\nStart training..')
         print('num_epochs: {}'.format(config_dict['num_epochs']))
         print('save_dir: {}'.format(save_dir))
@@ -46,25 +47,40 @@ class TrainManager:
             with tqdm(data_loader) as pbar_train:
                 pbar_train.set_description('Epoch: {}/{}, Time: {}, lr: {}'.format(epoch, config_dict['num_epochs'], datetime.now(
                     gettz('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S'), optimizer.param_groups[0]['lr']))
+                train_count = 0
                 for images, masks, image_infos in pbar_train:
-                    # (batch, channel, height, width)
-                    images = torch.stack(images)
-                    # (batch, channel, height, width)
-                    masks = torch.stack(masks).long()
+                    train_flag = 0
+                    if target_only_p == 0.0:
+                        train_flag = 1
+                    else:
+                        max_value = 0
+                        for idx in range(len(masks)):
+                            max_value += torch.max(masks[idx])
+                        if (max_value == 0) and (torch.rand(1) <= target_only_p):
+                            train_flag = 0
+                        else:
+                            train_flag = 1
 
-                    images, masks = images.to(
-                        self.device), masks.to(self.device)
-                    outputs = model(images)
+                    if train_flag == 1:
+                        train_count += 1
+                        # (batch, channel, height, width)
+                        images = torch.stack(images)
+                        # (batch, channel, height, width)
+                        masks = torch.stack(masks).long()
 
-                    # compute the loss
-                    loss = criterion(outputs, masks)
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
+                        images, masks = images.to(
+                            self.device), masks.to(self.device)
+                        outputs = model(images)
 
-                    loss_list.append(loss.item())
-                    pbar_train.set_postfix(loss=loss.item(),
-                                     mean_loss=np.mean(loss_list))
+                        # compute the loss
+                        loss = criterion(outputs, masks)
+                        optimizer.zero_grad()
+                        loss.backward()
+                        optimizer.step()
+
+                        loss_list.append(loss.item())
+                        pbar_train.set_postfix(loss=loss.item(),
+                                        mean_loss=np.mean(loss_list), train_count=train_count)
 
             if lr_scheduler is not None:
                 lr_scheduler.step()
@@ -202,6 +218,86 @@ if __name__ == "__main__":
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
 
+    target_classes = Utils.get_classes()
+
+    config_dict = {
+        'project_name': 'test',
+        'run_name': '[TM] All_CE_e5',
+        'network': 'DeepLabV3Plus',
+        'encoder': 'resnet101',
+        'encoder_weights': 'imagenet',
+        'target_classes': target_classes,
+        'activation': None,
+        'multi_gpu': False,
+        'num_epochs': 5,
+        'batch_size': 5,
+        'learning_rate_0': 1e-4,
+        'number_worker': 4,
+        'val_every': 1,
+        'note': 'test train'
+    }
+
+    # Make Model
+    model_manager = ModelManager()
+    model = model_manager.make_deeplabv3plus_model(
+        encoder=config_dict['encoder'],
+        encoder_weights=config_dict['encoder_weights'],
+        class_number=len(target_classes), # 12
+        activation=config_dict['activation'],
+        multi_gpu=config_dict['multi_gpu']
+    )
+
+    # Load Dataset
+    data_manager = DataManager(dataset_path=dataset_dir)
+    data_manager.assignDataLoaders(
+        batch_size=config_dict['batch_size'],
+        shuffle=True,
+        number_worker=config_dict['number_worker'],
+        drop_last=False,
+        transform=CustomAugmentation.to_tensor_transform() # should be list
+    )
+
+    criterion = smp.utils.losses.CrossEntropyLoss()
+    # criterion = smp.utils.losses.BCEWithLogitsLoss()
+    # criterion = tgm.losses.DiceLoss()
+    # criterion = DiceLoss()
+    # criterion = smp.utils.losses.JaccardLoss()
+
+    optimizer = torch.optim.Adam(
+        [dict(params=model.parameters(),
+                lr=config_dict['learning_rate_0']
+                ),
+            ])
+
+    lr_scheduler = None
+    # lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
+    #     optimizer, max_lr=0.01, steps_per_epoch=10, epochs=epochs, anneal_strategy='cos'
+    # )
+    # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+    #     optimizer, T_0=1, T_mult=2, eta_min=5e-5,
+    # )
+    # lr_scheduler = CustomCosineAnnealingWarmUpRestarts(
+    #     optimizer, T_0=20, T_mult=1, eta_max=0.1,  T_up=2, gamma=0.5
+    # )
+
+    # Run Train
+    train_manager = TrainManager()
+    train_manager.run_train(
+        model=model,
+        config_dict=config_dict,
+        data_loader=data_manager.train_data_loader,
+        val_loader=data_manager.val_data_loader,
+        criterion=criterion,
+        optimizer=optimizer,
+        lr_scheduler=lr_scheduler,
+        save_dir=save_dir,
+        file_name='best_model_1.pt',
+    )
+
+
+
+# Binary Segmentation x 11 classes
+'''
     for class_name in Utils.get_classes()[1:]:
         # Set Configures
         # target_classes = Utils.get_classes()
@@ -284,3 +380,4 @@ if __name__ == "__main__":
             file_name='best_model_target_' + '_'.join([v.lower() for v in target_classes[1:]]) +'.pt',
             # file_name='best_model_1.pt'
         )
+'''

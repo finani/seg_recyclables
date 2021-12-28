@@ -117,7 +117,7 @@ class InferManager:
             fig_name = os.path.join(save_dir, '_'.join(
                 [v.lower() for v in class_name_list[1:]]) + '_' + mode + '_' + str(data_index) + '.png')
             plt.savefig(fig_name)
-            plt.show()
+            # plt.show()
             run_predicted_image = wandb.Image(
                 fig_name,
                 caption='run_predict image'
