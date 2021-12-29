@@ -40,7 +40,7 @@ if __name__ == "__main__":
         'target_classes': target_classes,
         'activation': None,
         'multi_gpu': False,
-        'num_epochs': 5,
+        'num_epochs': 20,
         'batch_size': 5,
         'learning_rate_0': 1e-4,
         'number_worker': 4,

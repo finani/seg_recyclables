@@ -3,27 +3,27 @@
 import os
 import sys
 
+import numpy as np
+
 import Utils
 from ModelManager import ModelManager
 from DataManager import DataManager, CustomDatasetCoCoFormat, CustomAugmentation
 from InferManager import InferManager
 
-# CUDA_VISIBLE_DEVICES=0 python3 _infer_bin_single_model.py UNKNOWN
-
 if __name__ == "__main__":
-    class_name = sys.argv[1]
-
     project_dir = '/home/weebee/recyclables/baseline'
     dataset_dir = os.path.join(project_dir, 'input')
-    save_dir = os.path.join(project_dir, 'saved/server_s11_train_sep_25')
+    save_dir = os.path.join(project_dir, 'saved/tm_test')
     if not os.path.isdir(dataset_dir):
         sys.exit('check dataset path!!')
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
 
+    target_classes = Utils.get_classes()
+
     config_dict = {
         'project_name': 'test',
-        'run_name': '[IM] All Binary Classes',
+        'run_name': '[IM] All Balanced Classes',
         'network': 'DeepLabV3Plus',
         'encoder': 'resnet101',
         'encoder_weights': 'imagenet',
@@ -40,7 +40,7 @@ if __name__ == "__main__":
     model = model_manager.make_deeplabv3plus_model(
         encoder=config_dict['encoder'],
         encoder_weights=config_dict['encoder_weights'],
-        class_number=2,
+        class_number=len(target_classes),
         activation=config_dict['activation'],
         multi_gpu=config_dict['multi_gpu']
     )
@@ -63,5 +63,22 @@ if __name__ == "__main__":
 
     # Save Outputs for binary segmentation
     infer_manager = InferManager()
-    infer_manager.run_infer_and_save_outputs(
-        model, test_data_loader, save_dir, class_name)
+
+    # Load Weights
+    model = infer_manager.load_saved_model_weight(
+        model=model,
+        save_dir=save_dir,
+        model_file_name='best_model_1_0.pt'
+    )
+
+    # inference
+    file_names, preds = infer_manager.run_test(
+        model=model,
+        data_loader=test_data_loader
+    )
+
+    # save outputs
+    preds_path = os.path.join(save_dir, 'preds_1.npy')
+    file_names_path = os.path.join(save_dir, 'file_names_1.npy')
+    np.save(preds_path, preds)
+    np.save(file_names_path, file_names)

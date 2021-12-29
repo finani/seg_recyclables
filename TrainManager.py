@@ -153,7 +153,7 @@ class TrainManager:
             if (epoch + 1) % config_dict['val_every'] == 0:
                 avrg_loss = self.run_validation_image(
                     model, epoch + 1, val_loader, criterion, len(config_dict['target_classes']), learning_rate, np.mean(loss_list), train_count)
-                if (avrg_loss < best_loss) and (epoch > config_dict['num_epochs'] * 2.0/3.0):
+                if avrg_loss < best_loss:
                     print('Best performance at epoch : {}'.format(epoch + 1))
                     print('Save model in', save_dir)
                     best_loss = avrg_loss
