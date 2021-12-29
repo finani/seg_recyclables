@@ -69,6 +69,8 @@ class TrainManager:
                         # (batch, channel, height, width)
                         masks = torch.stack(masks).long()
 
+                        print(images.shape)
+                        print(masks.shape)
                         images, masks = images.to(
                             self.device), masks.to(self.device)
                         outputs = model(images)
@@ -101,6 +103,66 @@ class TrainManager:
 
         return model
 
+    def run_train_image(self, model, config_dict, data_loader, val_loader, criterion, optimizer, lr_scheduler, save_dir, file_name):
+        print('\nStart training..')
+        print('num_epochs: {}'.format(config_dict['num_epochs']))
+        print('save_dir: {}'.format(save_dir))
+        print('file_name: {}'.format(file_name))
+        print('val_every: {}'.format(config_dict['val_every']))
+        print('')
+        wandb.init(project=config_dict['project_name'],
+                   reinit=True,
+                   config=config_dict)
+        wandb.run.name = config_dict['run_name']
+        wandb.watch(model)
+        best_loss = 9999999
+        for epoch in range(config_dict['num_epochs']):
+            print('')
+            model.train()
+            loss_list = []
+            learning_rate = optimizer.param_groups[0]['lr']
+            with tqdm(data_loader) as pbar_train:
+                pbar_train.set_description('Epoch: {}/{}, Time: {}, lr: {}'.format(epoch, config_dict['num_epochs'], datetime.now(
+                    gettz('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S'), learning_rate))
+                train_count = 0
+                for images, masks in pbar_train:
+                    train_count += 1
+
+                    # (batch, channel, height, width)
+                    masks = masks.squeeze().long()
+
+                    images, masks = images.to(
+                        self.device), masks.to(self.device)
+                    outputs = model(images)
+
+                    # compute the loss
+                    loss = criterion(outputs, masks)
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+                    loss_list.append(loss.item())
+                    pbar_train.set_postfix(train_count=train_count, loss=loss.item(),
+                                    mean_loss=np.mean(loss_list))
+
+            if lr_scheduler is not None:
+                lr_scheduler.step()
+
+            # print the loss and save the best model at val_every intervals.
+            if (epoch + 1) % config_dict['val_every'] == 0:
+                avrg_loss = self.run_validation_image(
+                    model, epoch + 1, val_loader, criterion, len(config_dict['target_classes']), learning_rate, np.mean(loss_list), train_count)
+                if (avrg_loss < best_loss) and (epoch > config_dict['num_epochs'] *2.0/3.0):
+                    print('Best performance at epoch : {}'.format(epoch + 1))
+                    print('Save model in', save_dir)
+                    best_loss = avrg_loss
+                    file_name_new = file_name.split('.')
+                    file_name_new = file_name_new[0] + '_' + str(epoch) + '.' + file_name_new[-1]
+                    self.save_model(
+                        model=model, save_dir=save_dir, file_name=file_name_new)
+
+        return model
+
     def run_validation(self, model, epoch, data_loader, criterion, class_number, learning_rate, train_loss, train_count=0):
         print('\nStart validation #{}'.format(epoch))
         model.eval()
@@ -117,6 +179,74 @@ class TrainManager:
                     images = torch.stack(images)
                     # (batch, channel, height, width)
                     masks = torch.stack(masks).long()
+
+                    images, masks = images.to(
+                        self.device), masks.to(self.device)
+
+                    outputs = model(images)
+                    loss = criterion(outputs, masks)
+                    total_loss += loss
+                    cnt += 1
+
+                    outputs = torch.nn.functional.softmax(
+                        outputs, dim=1)  # add
+                    outputs = torch.argmax(
+                        outputs.squeeze(), dim=1).detach().cpu().numpy()
+
+                    hist, acc, acc_cls, mIoU, fwavacc = self.label_accuracy_score(
+                        masks.detach().cpu().numpy(), outputs, n_class=class_number)
+                    acc_list.append(acc)
+                    mIoU_list.append(mIoU)
+                    pbar_val.set_postfix(
+                        mIoU_batch=mIoU, mIoU_all=np.mean(mIoU_list))
+
+                avrg_loss = total_loss / cnt
+                print('\nValidation #{}  Average Loss: {:.4f}, mIoU_all: {:.4f}'.format(
+                    epoch, avrg_loss, np.mean(mIoU_list)))
+
+                oImage = images[0:4].permute([0, 2, 3, 1]).detach().cpu().numpy()
+                original_image = wandb.Image(
+                    np.concatenate((np.concatenate((oImage[0], oImage[1]), axis=1), np.concatenate((oImage[2], oImage[3]), axis=1)), axis=0),
+                    caption='original image'
+                )
+                mImage = masks[0:4].detach().cpu().numpy()
+                mask_image = wandb.Image(
+                    np.concatenate((np.concatenate((mImage[0], mImage[1]), axis=1), np.concatenate((mImage[2], mImage[3]), axis=1)), axis=0),
+                    caption='mask image'
+                )
+                predicted_image = wandb.Image(
+                    np.concatenate((np.concatenate((outputs[0], outputs[1]), axis=1), np.concatenate((outputs[2], outputs[3]), axis=1)), axis=0),
+                    caption='predicted image'
+                )
+
+                wandb.log({
+                    "original Image": original_image,
+                    "mask Image": mask_image,
+                    "predicted Image": predicted_image,
+                    "learning_rate": learning_rate,
+                    "train_loss": train_loss,
+                    "train_count": train_count,
+                    "Average Loss": avrg_loss,
+                    "acc_all": np.mean(acc_list),
+                    "mIoU_all": np.mean(mIoU_list)
+                })
+
+        return avrg_loss
+
+    def run_validation_image(self, model, epoch, data_loader, criterion, class_number, learning_rate, train_loss, train_count=0):
+        print('\nStart validation #{}'.format(epoch))
+        model.eval()
+        with torch.no_grad():
+            total_loss = 0
+            cnt = 0
+            acc_list = []
+            mIoU_list = []
+            with tqdm(data_loader) as pbar_val:
+                pbar_val.set_description('Epoch: {}'.format(epoch))
+                for images, masks in pbar_val:
+
+                    # (batch, channel, height, width)
+                    masks = masks.squeeze().long()
 
                     images, masks = images.to(
                         self.device), masks.to(self.device)

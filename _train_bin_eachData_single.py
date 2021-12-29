@@ -26,7 +26,7 @@ from LearningRateManager import CustomCosineAnnealingWarmUpRestarts
 # Binary Segmentation x single classes with each dataset (~25%)
 if __name__ == "__main__":
     class_name = sys.argv[1]  # 11 classes
-    target_only_p = sys.argv[2]  # 0.0 ~ 1.0
+    target_only_p = float(sys.argv[2])  # 0.0 ~ 1.0
 
     Utils.fix_random_seed(random_seed=21)
 

@@ -5,6 +5,7 @@ import sys
 
 import torch
 from torch.optim import lr_scheduler
+from torch.utils.data import DataLoader
 
 import segmentation_models_pytorch as smp
 
@@ -32,7 +33,7 @@ if __name__ == "__main__":
 
     config_dict = {
         'project_name': 'test',
-        'run_name': '[TM] All_CE_e5',
+        'run_name': '[TM] All_BD_e5',
         'network': 'DeepLabV3Plus',
         'encoder': 'resnet101',
         'encoder_weights': 'imagenet',
@@ -44,7 +45,9 @@ if __name__ == "__main__":
         'learning_rate_0': 1e-4,
         'number_worker': 4,
         'val_every': 1,
-        'note': 'test train'
+        'class_data_number': 19,
+        'train_val_p': 0.8,
+        'note': 'train with balanced dataset (#19)'
     }
 
     # Make Model
@@ -59,12 +62,27 @@ if __name__ == "__main__":
 
     # Load Dataset
     data_manager = DataManager(dataset_path=dataset_dir)
-    data_manager.assignDataLoaders(
+    train_datasets, val_datasets = data_manager.makeDatasetFromClassDataset(
+        dataset_dir=data_manager.dataset_path,
+        # class_names_list=target_classes[1:],
+        class_names_list=target_classes,
+        class_data_number = config_dict['class_data_number'], # min length(each class dataset)
+        train_val_p=config_dict['train_val_p']
+    )
+
+    train_loader = DataLoader(
+        dataset=train_datasets,
         batch_size=config_dict['batch_size'],
         shuffle=True,
-        number_worker=config_dict['number_worker'],
-        drop_last=False,
-        transform=CustomAugmentation.to_tensor_transform()  # should be list
+        num_workers=config_dict['number_worker'],
+        drop_last=False
+    )
+    val_loader = DataLoader(
+        dataset=val_datasets,
+        batch_size=config_dict['batch_size'],
+        shuffle=False,
+        num_workers=config_dict['number_worker'],
+        drop_last=False
     )
 
     criterion = smp.utils.losses.CrossEntropyLoss()
@@ -92,11 +110,11 @@ if __name__ == "__main__":
 
     # Run Train
     train_manager = TrainManager()
-    train_manager.run_train(
+    train_manager.run_train_image(
         model=model,
         config_dict=config_dict,
-        data_loader=data_manager.train_data_loader,
-        val_loader=data_manager.val_data_loader,
+        data_loader=train_loader,
+        val_loader=val_loader,
         criterion=criterion,
         optimizer=optimizer,
         lr_scheduler=lr_scheduler,
