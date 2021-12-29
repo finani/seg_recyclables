@@ -5,6 +5,7 @@ import sys
 
 import torch
 import numpy as np
+import cv2
 import pandas as pd
 from tqdm import tqdm
 
@@ -143,7 +144,8 @@ class InferManager:
                         oms = outs.detach().cpu().numpy()
                         # target class logits only
                         oms = oms[:, 1, :, :].squeeze()
-                        oms = oms * 255.0  # for resize (type_casting: integer)
+                        # for resize (type_casting: integer)
+                        oms = oms * 10000.0
                     else:
                         oms = torch.argmax(
                             outs.squeeze(), dim=1).detach().cpu().numpy()
@@ -169,6 +171,31 @@ class InferManager:
 
         return file_names, preds_array
 
+    def run_infer_and_save_outputs(self, model, test_data_loader, save_dir, class_name):
+        print("\n\tClass: {}\n".format(class_name))
+
+        # Load Weights
+        model = self.load_saved_model_weight(
+            model=model,
+            save_dir=save_dir,
+            model_file_name='best_model_target_' + class_name.lower() + '.pt'
+        )
+
+        # inference
+        file_names, preds = self.run_test(
+            model=model,
+            data_loader=test_data_loader,
+            binary_segmentation=True
+        )  # output=logits, file_number=837, [file_number,size*size]=[837, 65536]
+        # output=logits [class_number=11, file_number, size*size]
+
+        preds_path = os.path.join(
+            save_dir, 'preds10000_' + class_name.lower() + '.npy')
+        np.save(preds_path, preds)
+        file_names_path = os.path.join(
+            save_dir, 'file_names10000_' + class_name.lower() + '.npy')
+        np.save(file_names_path, file_names)
+
     def make_submission(self, model, save_dir, submission_file_name, test_loader):
         # inference
         file_names, preds = self.run_test(model=model, data_loader=test_loader)
@@ -182,29 +209,7 @@ class InferManager:
         submission_path = os.path.join(save_dir, submission_file_name)
         submission.to_csv(submission_path, index=False)
 
-    def make_submission_binary(self, model, test_data_loader, dataset_dir, save_dir, submission_file_name, threshold_bg=0.5):
-        preds_list = []
-        file_names_list = []
-        for class_name in Utils.get_classes()[1:]:
-            print("\n\tClass: {}\n".format(class_name))
-
-            # Load Weights
-            model = self.load_saved_model_weight(
-                model=model,
-                save_dir=save_dir,
-                model_file_name='best_model_target_' + class_name.lower() + '.pt'
-            )
-
-            # inference
-            file_names, preds = self.run_test(
-                model=model,
-                data_loader=test_data_loader,
-                binary_segmentation=True
-            )  # output=logits, file_number=837, [file_number,size*size]=[837, 65536]
-            # output=logits [class_number=11, file_number, size*size]
-            preds_list.append(preds/255.0)
-            file_names_list.append(file_names)
-
+    def mix_outputs_with_logits(self, preds_list, threshold_bg):  # logits -> argmax
         # [class_number, file_number, size*size] = [11, 837, 65536]
         preds_np = np.array(preds_list)
         # [file_number, size*size] = [837, 65536]
@@ -214,46 +219,129 @@ class InferManager:
         # background = 1, foreground = 0
         preds_bg = np.where(np.sum(preds_bg_temp, axis=0) == 0, 1, 0)
         preds = (1-preds_bg) * preds_fg
+        return preds_fg, preds_bg, preds
+
+    # argmax -> class index weighted
+    def mix_outputs_with_argmax(self, preds_list):
+        # [class_number, file_number, size*size] = [11, 837, 65536]
+        preds_np = np.array(preds_list)
+        # [class_number, file_number, size*size] = [11, 837, 65536]
+        preds_temp = np.where(preds_np > 0.5, 1, 0)
+        print(preds_temp.shape[0])
+        for class_idx in range(preds_temp.shape[0]):
+            preds_temp[class_idx] = preds_temp[class_idx] * class_idx
+        # [file_number, size*size] = [837, 65536]
+        preds = np.argmax(preds_temp, axis=0)
+        preds_fg = np.where(preds == 0, 0, 1)
+        preds_bg = np.where(preds == 0, 1, 0)
+        return preds_fg, preds_bg, preds
+
+    # argmax -> class index weighted
+    def save_outputs_with_argmax(self, dataset_dir, save_dir, file_names_list, preds_list):
+        # [class_number, file_number, size*size] = [11, 837, 65536]
+        preds_np = np.array(preds_list)
+        # [class_number, file_number, size*size] = [11, 837, 65536]
+        preds_temp = np.where(preds_np > 0.5, 1, 0)
+        # [class_number, file_number, size, size] = [11, 837, 256, 256]
+        class_number = preds_temp.shape[0]  # 11
+        file_number = preds_temp.shape[1]  # 837
+        preds_img = preds_temp.reshape(class_number, file_number, 256, 256)
+        for file_idx in range(file_number):
+            original_img = img.imread(os.path.join(
+                dataset_dir, file_names_list[0][file_idx]))
+            original_img = cv2.resize(original_img, dsize=(256, 256), interpolation=cv2.INTER_AREA)
+            original_img = np.float32(original_img/255.0)
+
+            preds_img_rgb = np.zeros((11, 256, 256, 3))
+            for class_idx in range(class_number):
+                preds_img_rgb[class_idx] = cv2.cvtColor(np.float32(preds_img[class_idx][file_idx]), cv2.COLOR_GRAY2BGR)
+                point = 5, 35
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                blue_color = (0.0, 0.0, 1.0)
+                cv2.putText(preds_img_rgb[class_idx], Utils.get_classes()[class_idx+1], point, font, 1, blue_color, 2, cv2.LINE_AA)
+
+            concat_img1 = np.concatenate(
+                (original_img, preds_img_rgb[0], preds_img_rgb[1], preds_img_rgb[2]), axis=1)
+            concat_img2 = np.concatenate(
+                (preds_img_rgb[3], preds_img_rgb[4], preds_img_rgb[5], preds_img_rgb[6]), axis=1)
+            concat_img3 = np.concatenate(
+                (preds_img_rgb[7], preds_img_rgb[8], preds_img_rgb[9], preds_img_rgb[10]), axis=1)
+            concat_img = np.concatenate(
+                (concat_img1, concat_img2, concat_img3), axis=0)
+
+            img_path = os.path.join(
+                save_dir, 'concat_img/concat_img_' + str(file_idx) + '.png')
+            plt.imsave(img_path, concat_img)
+
+    def make_submission_binary(self, dataset_dir, save_dir, submission_file_name, algorithm='logits', threshold_bg=0.5):
+        preds_list = []
+        file_names_list = []
+        for class_name in Utils.get_classes()[1:]:
+            preds_path = os.path.join(
+                save_dir, 'preds10000_' + class_name.lower() + '.npy')
+            preds = np.load(preds_path)
+            file_names_path = os.path.join(
+                save_dir, 'file_names10000_' + class_name.lower() + '.npy')
+            file_names = np.load(file_names_path)
+            preds_list.append(preds/10000.0)
+            file_names_list.append(file_names)
+
+        if algorithm == 'logits':
+            preds_fg, preds_bg, preds = self.mix_outputs_with_logits(
+                preds_list, threshold_bg)
+        elif algorithm == 'argmax':
+            preds_fg, preds_bg, preds = self.mix_outputs_with_argmax(
+                preds_list)
+        elif algorithm == 'save_argmax':
+            self.save_outputs_with_argmax(
+                dataset_dir, save_dir, file_names_list, preds_list)
+            return
 
         for img_idx in range(5):
-            file_number = np.random.choice(len(preds), 5) # 837, 5
+            file_number = np.random.choice(len(preds), 5)  # 837, 5
             print(file_number)
 
-            fig, axs = plt.subplots(nrows=len(file_number), ncols=4, figsize=(40, 40))
+            fig, axs = plt.subplots(
+                nrows=len(file_number), ncols=4, figsize=(40, 40))
             font_size = 14
             for idx in range(len(file_number)):
                 # Original image
-                im1 = axs[idx][0].imshow(img.imread(os.path.join(dataset_dir, file_names_list[idx][file_number[idx]])))
+                im1 = axs[idx][0].imshow(img.imread(os.path.join(
+                    dataset_dir, file_names_list[idx][file_number[idx]])))  # TODO: file_names_list[idx] -> file_names_list[0]
                 axs[idx][0].grid(False)
                 axs[idx][0].set_title("Original image : {}".format(
                     file_names_list[idx][file_number[idx]]), fontsize=font_size)
                 plt.colorbar(mappable=im1, ax=axs[idx][0])
 
                 # Predicted forground
-                im2 = axs[idx][1].imshow(preds_fg[file_number[idx]].reshape(256, 256), cmap='gray')
+                im2 = axs[idx][1].imshow(
+                    preds_fg[file_number[idx]].reshape(256, 256), cmap='gray')
                 axs[idx][1].grid(False)
                 axs[idx][1].set_title("foreground only : {}".format(
                     file_names_list[idx][file_number[idx]]), fontsize=font_size)
                 plt.colorbar(mappable=im2, ax=axs[idx][1])
 
                 # Predicted background
-                im3 = axs[idx][2].imshow(preds_bg[file_number[idx]].reshape(256, 256), cmap='gray')
+                im3 = axs[idx][2].imshow(
+                    preds_bg[file_number[idx]].reshape(256, 256), cmap='gray')
                 axs[idx][2].grid(False)
                 axs[idx][2].set_title("background only : {}".format(
                     file_names_list[idx][file_number[idx]]), fontsize=font_size)
                 plt.colorbar(mappable=im3, ax=axs[idx][2])
 
                 # Predicted image
-                im4 = axs[idx][3].imshow(preds[file_number[idx]].reshape(256, 256), cmap='gray')
+                im4 = axs[idx][3].imshow(
+                    preds[file_number[idx]].reshape(256, 256), cmap='gray')
                 axs[idx][3].grid(False)
                 axs[idx][3].set_title("Predicted : {}".format(
                     [{int(class_number), Utils.get_classes()[
-                            int(class_number)]} for class_number in list(np.unique(preds[file_number[idx]]))]), fontsize=font_size)
+                        int(class_number)]} for class_number in list(np.unique(preds[file_number[idx]]))]), fontsize=font_size)
                 plt.colorbar(mappable=im4, ax=axs[idx][3])
 
-            fig_name = os.path.join(save_dir, 'submission_' + str(img_idx) + '.png')
+            fig_name = os.path.join(
+                save_dir, 'submission_' + str(img_idx) + '.png')
             plt.savefig(fig_name)
-            plt.show()
+            # plt.show()
 
         submission = pd.DataFrame()
         submission['image_id'] = file_names
@@ -273,53 +361,6 @@ if __name__ == "__main__":
         sys.exit('check dataset path!!')
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
-
-    # # Make Model
-    # model_manager = ModelManager()
-    # model = model_manager.make_deeplabv3plus_model(
-    #     encoder='resnet101',
-    #     encoder_weights='imagenet',
-    #     class_number=len(Utils.get_classes()),
-    #     activation=None,
-    #     multi_gpu=False
-    # )
-
-    # # Load Dataset
-    # data_manager = DataManager(dataset_path=dataset_dir)
-    # test_dataset = CustomDataset(
-    #     dataset_dir=data_manager.dataset_path,
-    #     json_file_name='test.json',
-    #     mode='test',
-    #     transform=CustomAugmentation.to_tensor_transform()
-    # )
-    # test_data_loader = data_manager.make_data_loader(
-    #     dataset=test_dataset,
-    #     batch_size=20,
-    #     shuffle=False,
-    #     number_worker=4,
-    #     drop_last=False
-    # )
-
-    # # Run Inference
-    # infer_manager = InferManager()
-    # model = infer_manager.load_saved_model_weight(
-    #     model=model,
-    #     save_dir=save_dir,
-    #     model_file_name='best_model_11.pt'
-    # )
-    # infer_manager.run_predict(
-    #     model=model,
-    #     data_loader=test_data_loader,
-    #     data_index=0  # data_index < batch_size
-    # )
-
-    # Make Submission
-    # infer_manager.make_submission(
-    #     model=model,
-    #     save_dir=save_dir,
-    #     submission_file_name='submission.csv',
-    #     test_loader=test_data_loader
-    # )
 
     config_dict = {
         'project_name': 'test',
@@ -363,9 +404,11 @@ if __name__ == "__main__":
 
     # Make Submission for binary segmentation
     infer_manager = InferManager()
+
+    for class_name in Utils.get_classes():
+        infer_manager.run_infer_and_save_outputs(
+            model, test_data_loader, save_dir, class_name)
     infer_manager.make_submission_binary(
-        model=model,
-        test_data_loader=test_data_loader,
         dataset_dir=dataset_dir,
         save_dir=save_dir,
         submission_file_name='submission.csv',
