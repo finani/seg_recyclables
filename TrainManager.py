@@ -83,7 +83,7 @@ class TrainManager:
 
                         loss_list.append(loss.item())
                         pbar_train.set_postfix(train_count=train_count, loss=loss.item(),
-                                        mean_loss=np.mean(loss_list))
+                                               mean_loss=np.mean(loss_list))
 
             if lr_scheduler is not None:
                 lr_scheduler.step()
@@ -92,12 +92,13 @@ class TrainManager:
             if (epoch + 1) % config_dict['val_every'] == 0:
                 avrg_loss = self.run_validation(
                     model, epoch + 1, val_loader, criterion, len(config_dict['target_classes']), learning_rate, np.mean(loss_list), train_count)
-                if (avrg_loss < best_loss) and (epoch > config_dict['num_epochs'] *2.0/3.0):
+                if (avrg_loss < best_loss) and (epoch > config_dict['num_epochs'] * 2.0/3.0):
                     print('Best performance at epoch : {}'.format(epoch + 1))
                     print('Save model in', save_dir)
                     best_loss = avrg_loss
                     file_name_new = file_name.split('.')
-                    file_name_new = file_name_new[0] + '_' + str(epoch) + '.' + file_name_new[-1]
+                    file_name_new = file_name_new[0] + '_' + \
+                        str(epoch) + '.' + file_name_new[-1]
                     self.save_model(
                         model=model, save_dir=save_dir, file_name=file_name_new)
 
@@ -143,7 +144,7 @@ class TrainManager:
 
                     loss_list.append(loss.item())
                     pbar_train.set_postfix(train_count=train_count, loss=loss.item(),
-                                    mean_loss=np.mean(loss_list))
+                                           mean_loss=np.mean(loss_list))
 
             if lr_scheduler is not None:
                 lr_scheduler.step()
@@ -152,12 +153,13 @@ class TrainManager:
             if (epoch + 1) % config_dict['val_every'] == 0:
                 avrg_loss = self.run_validation_image(
                     model, epoch + 1, val_loader, criterion, len(config_dict['target_classes']), learning_rate, np.mean(loss_list), train_count)
-                if (avrg_loss < best_loss) and (epoch > config_dict['num_epochs'] *2.0/3.0):
+                if (avrg_loss < best_loss) and (epoch > config_dict['num_epochs'] * 2.0/3.0):
                     print('Best performance at epoch : {}'.format(epoch + 1))
                     print('Save model in', save_dir)
                     best_loss = avrg_loss
                     file_name_new = file_name.split('.')
-                    file_name_new = file_name_new[0] + '_' + str(epoch) + '.' + file_name_new[-1]
+                    file_name_new = file_name_new[0] + '_' + \
+                        str(epoch) + '.' + file_name_new[-1]
                     self.save_model(
                         model=model, save_dir=save_dir, file_name=file_name_new)
 
@@ -204,18 +206,22 @@ class TrainManager:
                 print('\nValidation #{}  Average Loss: {:.4f}, mIoU_all: {:.4f}'.format(
                     epoch, avrg_loss, np.mean(mIoU_list)))
 
-                oImage = images[0:4].permute([0, 2, 3, 1]).detach().cpu().numpy()
+                oImage = images[0:4].permute(
+                    [0, 2, 3, 1]).detach().cpu().numpy()
                 original_image = wandb.Image(
-                    np.concatenate((np.concatenate((oImage[0], oImage[1]), axis=1), np.concatenate((oImage[2], oImage[3]), axis=1)), axis=0),
+                    np.concatenate((np.concatenate((oImage[0], oImage[1]), axis=1), np.concatenate(
+                        (oImage[2], oImage[3]), axis=1)), axis=0),
                     caption='original image'
                 )
                 mImage = masks[0:4].detach().cpu().numpy()
                 mask_image = wandb.Image(
-                    np.concatenate((np.concatenate((mImage[0], mImage[1]), axis=1), np.concatenate((mImage[2], mImage[3]), axis=1)), axis=0),
+                    np.concatenate((np.concatenate((mImage[0], mImage[1]), axis=1), np.concatenate(
+                        (mImage[2], mImage[3]), axis=1)), axis=0),
                     caption='mask image'
                 )
                 predicted_image = wandb.Image(
-                    np.concatenate((np.concatenate((outputs[0], outputs[1]), axis=1), np.concatenate((outputs[2], outputs[3]), axis=1)), axis=0),
+                    np.concatenate((np.concatenate((outputs[0], outputs[1]), axis=1), np.concatenate(
+                        (outputs[2], outputs[3]), axis=1)), axis=0),
                     caption='predicted image'
                 )
 
@@ -243,6 +249,7 @@ class TrainManager:
             mIoU_list = []
             with tqdm(data_loader) as pbar_val:
                 pbar_val.set_description('Epoch: {}'.format(epoch))
+                first_run = True
                 for images, masks in pbar_val:
 
                     # (batch, channel, height, width)
@@ -268,22 +275,32 @@ class TrainManager:
                     pbar_val.set_postfix(
                         mIoU_batch=mIoU, mIoU_all=np.mean(mIoU_list))
 
+                    if first_run is True:
+                        first_images = images
+                        first_masks = masks
+                        first_outputs = outputs
+                        first_run = False
+
                 avrg_loss = total_loss / cnt
                 print('\nValidation #{}  Average Loss: {:.4f}, mIoU_all: {:.4f}'.format(
                     epoch, avrg_loss, np.mean(mIoU_list)))
 
-                oImage = images[0:4].permute([0, 2, 3, 1]).detach().cpu().numpy()
+                oImage = first_images[0:4].permute(
+                    [0, 2, 3, 1]).detach().cpu().numpy()
                 original_image = wandb.Image(
-                    np.concatenate((np.concatenate((oImage[0], oImage[1]), axis=1), np.concatenate((oImage[2], oImage[3]), axis=1)), axis=0),
+                    np.concatenate((np.concatenate((oImage[0], oImage[1]), axis=1), np.concatenate(
+                        (oImage[2], oImage[3]), axis=1)), axis=0),
                     caption='original image'
                 )
-                mImage = masks[0:4].detach().cpu().numpy()
+                mImage = first_masks[0:4].detach().cpu().numpy()
                 mask_image = wandb.Image(
-                    np.concatenate((np.concatenate((mImage[0], mImage[1]), axis=1), np.concatenate((mImage[2], mImage[3]), axis=1)), axis=0),
+                    np.concatenate((np.concatenate((mImage[0], mImage[1]), axis=1), np.concatenate(
+                        (mImage[2], mImage[3]), axis=1)), axis=0),
                     caption='mask image'
                 )
                 predicted_image = wandb.Image(
-                    np.concatenate((np.concatenate((outputs[0], outputs[1]), axis=1), np.concatenate((outputs[2], outputs[3]), axis=1)), axis=0),
+                    np.concatenate((np.concatenate((first_outputs[0], first_outputs[1]), axis=1), np.concatenate(
+                        (first_outputs[2], first_outputs[3]), axis=1)), axis=0),
                     caption='predicted image'
                 )
 
@@ -353,8 +370,6 @@ if __name__ == "__main__":
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
 
-
-
     # train all classes
     target_classes = Utils.get_classes()
 
@@ -380,7 +395,7 @@ if __name__ == "__main__":
     model = model_manager.make_deeplabv3plus_model(
         encoder=config_dict['encoder'],
         encoder_weights=config_dict['encoder_weights'],
-        class_number=len(target_classes), # 12
+        class_number=len(target_classes),  # 12
         activation=config_dict['activation'],
         multi_gpu=config_dict['multi_gpu']
     )
@@ -392,7 +407,7 @@ if __name__ == "__main__":
         shuffle=True,
         number_worker=config_dict['number_worker'],
         drop_last=False,
-        transform=CustomAugmentation.to_tensor_transform() # should be list
+        transform=CustomAugmentation.to_tensor_transform()  # should be list
     )
 
     criterion = smp.utils.losses.CrossEntropyLoss()
@@ -403,9 +418,9 @@ if __name__ == "__main__":
 
     optimizer = torch.optim.Adam(
         [dict(params=model.parameters(),
-                lr=config_dict['learning_rate_0']
-                ),
-            ])
+              lr=config_dict['learning_rate_0']
+              ),
+         ])
 
     lr_scheduler = None
     # lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
