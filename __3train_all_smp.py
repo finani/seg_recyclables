@@ -45,9 +45,9 @@ if __name__ == "__main__":
         'learning_rate_0': 1e-4,
         'number_worker': 4,
         'val_every': 1,
-        'class_data_number': 19,
+        'class_data_number': 527, # 19
         'train_val_p': 0.8,
-        'note': 'train with balanced dataset (#19)'
+        'note': 'train with balanced dataset (#527)'
     }
 
     # Make Model

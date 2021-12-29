@@ -28,8 +28,9 @@ if __name__ == "__main__":
     # Check Dataset (Image Dataset)
     train_datasets, val_datasets = data_manager.makeDatasetFromClassDataset(
         dataset_dir=data_manager.dataset_path,
-        class_names_list=Utils.get_classes()[1:],
-        class_data_number = 19,
+        # class_names_list=Utils.get_classes()[1:],
+        class_names_list=['Battery'],
+        class_data_number = 57,
         train_val_p=0.8
     )
 
