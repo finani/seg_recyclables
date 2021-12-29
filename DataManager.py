@@ -6,10 +6,12 @@ from pycocotools.coco import COCO
 from albumentations.pytorch import ToTensor
 import albumentations as A
 import os
+import sys
+import random
 import json
 
 import cv2
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split, ConcatDataset
 import numpy as np
 import pandas as pd
 
@@ -88,8 +90,34 @@ class DataManager:
                     data=df, label="Total", color="b")
         plt.show()
 
+    def makeDatasetFromClassDataset(self, dataset_dir, class_names_list=[], class_data_number=1, train_val_p=0.8):
+        train_dataset_list = []
+        val_dataset_list = []
+        for class_name in class_names_list:
+            class_dataset = CustomDatasetImage(
+                images_dir=os.path.join(dataset_dir, class_name + '/data'),
+                masks_dir=os.path.join(
+                    dataset_dir, class_name + '/data_annot'),
+                sample_number=class_data_number,
+                augmentation=None,
+                preprocessing=CustomAugmentation.to_tensor_transform()
+            )
+
+            class_dataset_number = len(class_dataset)
+            train_size = int(train_val_p * class_dataset_number)
+            val_size = class_dataset_number - train_size
+            train_dataset, val_dataset = random_split(
+                class_dataset, [train_size, val_size])
+
+            train_dataset_list.append(train_dataset)
+            val_dataset_list.append(val_dataset)
+
+        train_datasets = ConcatDataset(train_dataset_list)
+        val_datasets = ConcatDataset(val_dataset_list)
+        return train_datasets, val_datasets
+
     def assignDataLoaders(self, batch_size, shuffle, number_worker, drop_last, transform=None, target_segmentation=False, target_classes=None):
-        train_dataset = CustomDataset(
+        train_dataset = CustomDatasetCoCoFormat(
             dataset_dir=self.dataset_path,
             json_file_name='train.json',
             mode='train',
@@ -97,7 +125,7 @@ class DataManager:
             target_segmentation=target_segmentation,
             target_classes=target_classes
         )
-        val_dataset = CustomDataset(
+        val_dataset = CustomDatasetCoCoFormat(
             dataset_dir=self.dataset_path,
             json_file_name='val.json',
             mode='val',
@@ -119,6 +147,40 @@ class DataManager:
             number_worker=number_worker,
             drop_last=drop_last
         )
+
+    def saveTrainValTargetOnly(self, data_loader, data_name, save_dir, class_name):
+        image_dir = save_dir + '/' + class_name + '/' + data_name
+        mask_dir = save_dir + '/' + class_name + '/' + data_name + '_annot'
+        if not os.path.isdir(image_dir):
+            os.makedirs(image_dir)
+        if not os.path.isdir(mask_dir):
+            os.makedirs(mask_dir)
+
+        class_value = Utils.get_classes().index(class_name)  # 3
+
+        data_count = 0
+        for imgs, masks, image_infos in data_loader:
+            for idx in range(len(image_infos)):
+                image_info = image_infos[idx]
+                image_np = imgs[idx].permute([1, 2, 0]).detach().cpu().numpy()
+                mask_np = masks[idx].detach().cpu().numpy()
+
+                if np.any(mask_np == class_value):
+                    image_np = cv2.cvtColor(image_np*255, cv2.COLOR_BGR2RGB)
+                    image_path = os.path.join(
+                        image_dir, image_info['file_name'].replace('/', '_'))
+                    image_path = image_path.split('.')[0] + '.bmp'
+                    cv2.imwrite(image_path, image_np)
+
+                    mask_path = os.path.join(
+                        mask_dir, image_info['file_name'].replace('/', '_'))
+                    mask_path = mask_path.split('.')[0] + '.bmp'
+                    cv2.imwrite(mask_path, mask_np)
+                    if data_count % 100 == 0:
+                        print("#{} : {}".format(data_count, np.unique(mask_np)))
+
+                    data_count += 1
+        print("data_count : {}".format(data_count))
 
     def checkTrainValLoader(self, data_loader):
         for imgs, masks, image_infos in data_loader:
@@ -144,6 +206,32 @@ class DataManager:
         ax2.grid(False)
         ax2.set_title("masks : {}".format(
             image_infos['file_name']), fontsize=15)
+        plt.colorbar(mappable=im2, ax=ax2)
+
+        plt.show()
+
+    def checkTrainValLoaderImage(self, data_loader):
+        for imgs, masks in data_loader:
+            temp_images = imgs
+            temp_masks = masks
+            break
+
+        fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(12, 12))
+
+        print('image shape:', list(temp_images[0].shape))
+        print('mask shape: ', list(temp_masks[0].shape))
+        print('Unique values: {}'.format(np.unique(temp_masks[0])))
+        print('Unique values, category of transformed mask: \n', [
+              {int(i), Utils.get_classes()[int(i)]} for i in list(np.unique(temp_masks[0]))])
+
+        im1 = ax1.imshow(temp_images[0].permute([1, 2, 0]))
+        ax1.grid(False)
+        ax1.set_title("input image", fontsize=15)
+        plt.colorbar(mappable=im1, ax=ax1)
+
+        im2 = ax2.imshow(temp_masks[0].squeeze(), cmap='gray')
+        ax2.grid(False)
+        ax2.set_title("mask", fontsize=15)
         plt.colorbar(mappable=im2, ax=ax2)
 
         plt.show()
@@ -178,7 +266,7 @@ class DataManager:
         return test_loader
 
 
-class CustomDataset(Dataset):
+class CustomDatasetCoCoFormat(Dataset):
     """COCO format"""
 
     def __init__(self, dataset_dir, json_file_name, mode='train', transform=None, target_segmentation=False, target_classes=None):
@@ -192,7 +280,7 @@ class CustomDataset(Dataset):
         # convert str names to class values on masks
         self.binary_segmentation = target_segmentation
         if self.binary_segmentation is True:
-            if target_classes[0] is not 'Background':
+            if target_classes[0] != 'Background':
                 target_classes.insert(0, 'Background')
             self.class_values = [Utils.get_classes().index(cls)
                                  for cls in target_classes]  # [0, 3]
@@ -256,6 +344,65 @@ class CustomDataset(Dataset):
         return len(self.coco.getImgIds())
 
 
+class CustomDatasetImage(Dataset):
+    """Recyclables Dataset. Read images, apply augmentation and preprocessing transformations.
+
+    Args:
+        images_dir (str): path to images folder
+        masks_dir (str): path to segmentation masks folder
+        class_values (list): values of classes to extract from segmentation mask
+        augmentation (albumentations.Compose): data transfromation pipeline
+            (e.g. flip, scale, etc.)
+        preprocessing (albumentations.Compose): data preprocessing
+            (e.g. noralization, shape manipulation, etc.)
+
+    """
+
+    def __init__(
+            self,
+            images_dir,
+            masks_dir,
+            sample_number=None,
+            augmentation=None,
+            preprocessing=None,
+    ):
+        self.ids = os.listdir(images_dir)
+        if sample_number is None:
+            pass
+        else:
+            self.ids = random.sample(self.ids, sample_number)
+        self.images_fps = [os.path.join(images_dir, image_id)
+                           for image_id in self.ids]
+        self.masks_fps = [os.path.join(masks_dir, image_id)
+                          for image_id in self.ids]
+
+        self.augmentation = augmentation
+        self.preprocessing = preprocessing
+
+    def __getitem__(self, i):
+
+        # read data
+        image = cv2.imread(self.images_fps[i], cv2.IMREAD_COLOR)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        mask = cv2.imread(self.masks_fps[i], cv2.IMREAD_GRAYSCALE)
+        # print(np.unique(mask))
+
+        # apply augmentations
+        if self.augmentation:
+            sample = self.augmentation(image=image, mask=mask)
+            image, mask = sample['image'], sample['mask']
+
+        # apply preprocessing
+        if self.preprocessing:
+            sample = self.preprocessing(image=image, mask=mask)
+            image, mask = sample['image'], sample['mask']
+
+        return image, mask * 255
+
+    def __len__(self):
+        return len(self.ids)
+
+
 class CustomAugmentation:
     def to_tensor_transform():
         transform = [
@@ -286,7 +433,7 @@ class CustomAugmentation:
     def medium_transform_v2():
         transform = [
             A.RandomSizedCrop(min_max_height=(50, 101),
-                                height=512, width=512, p=0.5),
+                              height=512, width=512, p=0.5),
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
             A.RandomRotate90(p=0.5),
@@ -303,8 +450,16 @@ class CustomAugmentation:
 
 
 if __name__ == "__main__":
-    data_manager = DataManager(
-        dataset_path='/home/weebee/recyclables/baseline/input')
+    project_dir = '/home/weebee/recyclables/baseline'
+    # dataset_dir = os.path.join(project_dir, 'input')
+    dataset_dir = os.path.join(project_dir, 'output_class')
+    save_dir = os.path.join(project_dir, 'tm_test')
+    if not os.path.isdir(dataset_dir):
+        sys.exit('check dataset path!!')
+    if not os.path.isdir(save_dir):
+        os.mkdir(save_dir)
+
+    data_manager = DataManager(dataset_path=dataset_dir)
 
     # # Check Dataset
     # data_manager.dataEDA(dataset_json_path=data_manager.train_dataset_json_path)
@@ -338,21 +493,49 @@ if __name__ == "__main__":
     # print("\nTest data")
     # data_manager.checkTestLoader(data_loader=test_data_loader)
 
-    # Check Dataset (train, target segmentation)
-    target_train_dataset = CustomDataset(
-        dataset_dir=data_manager.dataset_path,
-        json_file_name='train.json',
-        mode='train',
-        transform=CustomAugmentation.to_tensor_transform(),
-        target_segmentation=True,
-        target_classes=['Paper', 'Plastic bag']
+    # # Check Dataset (train, target segmentation)
+    # target_train_dataset = CustomDatasetCoCoFormat(
+    #     dataset_dir=data_manager.dataset_path,
+    #     json_file_name='train.json',
+    #     mode='train',
+    #     transform=CustomAugmentation.to_tensor_transform(),
+    #     target_segmentation=True,
+    #     target_classes=['Paper', 'Plastic bag']
+    # )
+    # target_train_data_loader = data_manager.make_data_loader(
+    #     dataset=target_train_dataset,
+    #     batch_size=5,
+    #     shuffle=True,
+    #     number_worker=4,
+    #     drop_last=False
+    # )
+    # print("\nTarget Train data")
+    # data_manager.checkTrainValLoader(data_loader=target_train_data_loader)
+
+    # Check Dataset (Image Dataset)
+    train_datasets, val_datasets = data_manager.makeDatasetFromClassDataset(
+        dataset_dir=dataset_dir,
+        class_names_list=['Battery', 'Clothing'],
+        train_val_p=0.8,
     )
-    target_train_data_loader = data_manager.make_data_loader(
-        dataset=target_train_dataset,
-        batch_size=5,
+
+    train_loader = DataLoader(
+        dataset=train_datasets,
+        batch_size=1,
         shuffle=True,
-        number_worker=4,
+        num_workers=1,
         drop_last=False
     )
-    print("\nTarget Train data")
-    data_manager.checkTrainValLoader(data_loader=target_train_data_loader)
+    val_loader = DataLoader(
+        dataset=val_datasets,
+        batch_size=1,
+        shuffle=False,
+        num_workers=1,
+        drop_last=False
+    )
+
+    print("train_loader : {}".format(len(train_loader)))
+    print("val_loader : {}".format(len(val_loader)))
+
+    print("\nBattery Train Data")
+    data_manager.checkTrainValLoaderImage(data_loader=train_loader)

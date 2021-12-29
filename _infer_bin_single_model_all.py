@@ -5,7 +5,7 @@ import sys
 
 import Utils
 from ModelManager import ModelManager
-from DataManager import DataManager, CustomDataset, CustomAugmentation
+from DataManager import DataManager, CustomDatasetCoCoFormat, CustomAugmentation
 from InferManager import InferManager
 
 # CUDA_VISIBLE_DEVICES=0 python3 _infer_bin_single_model_all.py
@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
         # Load Dataset
         data_manager = DataManager(dataset_path=dataset_dir)
-        test_dataset = CustomDataset(
+        test_dataset = CustomDatasetCoCoFormat(
             dataset_dir=data_manager.dataset_path,
             json_file_name='test.json',
             mode='test',

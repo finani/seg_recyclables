@@ -16,7 +16,7 @@ import albumentations as A
 
 import Utils
 from ModelManager import ModelManager
-from DataManager import DataManager, CustomDataset, CustomAugmentation
+from DataManager import DataManager, CustomDatasetCoCoFormat, CustomAugmentation
 
 
 class InferManager:
@@ -388,7 +388,7 @@ if __name__ == "__main__":
 
     # Load Dataset
     data_manager = DataManager(dataset_path=dataset_dir)
-    test_dataset = CustomDataset(
+    test_dataset = CustomDatasetCoCoFormat(
         dataset_dir=data_manager.dataset_path,
         json_file_name='test.json',
         mode='test',

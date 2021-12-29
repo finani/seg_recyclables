@@ -5,7 +5,7 @@ import sys
 
 import Utils
 from ModelManager import ModelManager
-from DataManager import DataManager, CustomDataset, CustomAugmentation
+from DataManager import DataManager, CustomDatasetCoCoFormat, CustomAugmentation
 from InferManager import InferManager
 
 # python3 _sub_bin_models.py save_argmax

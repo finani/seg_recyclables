@@ -21,10 +21,8 @@ if __name__ == "__main__":
     Utils.fix_random_seed(random_seed=21)
 
     project_dir = '/home/weebee/recyclables/baseline'
-    # project_dir = '/etc/recyclables'
-    dataset_dir = os.path.join(project_dir, 'input')
+    dataset_dir = os.path.join(project_dir, 'output_class')
     save_dir = os.path.join(project_dir, 'saved/tm_test')
-    # save_dir = os.path.join(project_dir, 'saved/test_sep_2')
     if not os.path.isdir(dataset_dir):
         sys.exit('check dataset path!!')
     if not os.path.isdir(save_dir):
