@@ -23,7 +23,7 @@ if __name__ == "__main__":
 
     project_dir = '/home/weebee/recyclables/baseline'
     dataset_dir = os.path.join(project_dir, 'output_class')
-    save_dir = os.path.join(project_dir, 'saved/tm_test')
+    save_dir = os.path.join(project_dir, 'saved/tm_test2')
     if not os.path.isdir(dataset_dir):
         sys.exit('check dataset path!!')
     if not os.path.isdir(save_dir):
@@ -33,21 +33,21 @@ if __name__ == "__main__":
 
     config_dict = {
         'project_name': 'test',
-        'run_name': '[TM] All_BD_e5',
+        'run_name': '[TM] All_FL_e10',
         'network': 'DeepLabV3Plus',
         'encoder': 'resnet101',
         'encoder_weights': 'imagenet',
         'target_classes': target_classes,
         'activation': None,
         'multi_gpu': False,
-        'num_epochs': 20,
+        'num_epochs': 10,
         'batch_size': 5,
         'learning_rate_0': 1e-4,
         'number_worker': 4,
         'val_every': 1,
-        'class_data_number': 527, # 19
+        'class_data_number': None, # 19
         'train_val_p': 0.8,
-        'note': 'train with balanced dataset (#527)'
+        'note': 'train with focal loss (#19)'
     }
 
     # Make Model
@@ -85,7 +85,7 @@ if __name__ == "__main__":
         drop_last=False
     )
 
-    criterion = smp.utils.losses.CrossEntropyLoss()
+    criterion = smp.losses.FocalLoss(mode='multiclass')
     # criterion = smp.utils.losses.BCEWithLogitsLoss()
     # criterion = tgm.losses.DiceLoss()
     # criterion = DiceLoss()

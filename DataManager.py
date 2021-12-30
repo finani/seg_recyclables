@@ -90,7 +90,7 @@ class DataManager:
                     data=df, label="Total", color="b")
         plt.show()
 
-    def makeDatasetFromClassDataset(self, dataset_dir, class_names_list=[], class_data_number=1, train_val_p=0.8):
+    def makeDatasetFromClassDataset(self, dataset_dir, class_names_list=[], class_data_number=None, train_val_p=0.8):
         train_dataset_list = []
         val_dataset_list = []
         for class_name in class_names_list:
@@ -425,8 +425,7 @@ class CustomAugmentation:
                                    0.05, alpha_affine=120 * 0.03),
                 A.GridDistortion(p=0.5),
                 A.OpticalDistortion(distort_limit=1, shift_limit=0.5, p=1),
-            ], p=0.8),
-            ToTensor(),
+            ], p=0.8)
         ]
         return A.Compose(transform)
 
@@ -443,8 +442,52 @@ class CustomAugmentation:
                                    0.05, alpha_affine=120 * 0.03),
                 A.GridDistortion(p=0.5),
                 A.OpticalDistortion(distort_limit=1, shift_limit=0.5, p=0.5),
-            ], p=0.5),
-            ToTensor(),
+            ], p=0.5)
+        ]
+        return A.Compose(transform)
+
+    def general_transform():
+        transform = [
+            A.VerticalFlip(p=0.3),
+            A.HorizontalFlip(p=0.3),
+            A.Transpose(p=0.3),
+            A.RandomRotate90(p=0.3),
+            A.ShiftScaleRotate(p=0.3),
+            A.RandomSizedCrop(min_max_height=(128, 256),
+                              height=512, width=512, p=1.0),
+            A.RandomGridShuffle(p=0.5),
+            A.Blur(p=0.1),
+            A.MotionBlur(p=0.1),
+            A.MedianBlur(p=0.1),
+            A.GaussianBlur(p=0.1),
+            A.GaussNoise(p=0.1),
+            A.ISONoise(p=0.1),
+            A.CLAHE(p=0.1),
+            A.GlassBlur(p=0.1)
+        ]
+        return A.Compose(transform)
+
+    def shape_fixed_transform():
+        transform = [
+            A.HueSaturationValue(p=0.3),
+            A.RGBShift(p=0.3),
+            A.RandomBrightnessContrast(p=0.3),
+            A.RandomBrightness(p=0.3),
+            A.RandomContrast(p=0.3),
+            A.ChannelDropout(p=0.3),
+            A.ChannelShuffle(p=0.3),
+            A.InvertImg(p=0.3),
+            A.RandomGamma(p=0.3),
+            A.ToSepia(p=0.3),
+            A.MultiplicativeNoise(p=0.3)
+        ]
+        return A.Compose(transform)
+
+    def color_fixed_transform():
+        transform = [
+            A.OpticalDistortion(p=0.5),
+            A.GridDistortion(p=0.5),
+            A.ElasticTransform(p=0.5)
         ]
         return A.Compose(transform)
 

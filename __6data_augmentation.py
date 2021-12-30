@@ -36,68 +36,30 @@ if __name__ == "__main__":
         images_dir=images_dir,
         masks_dir=masks_dir,
         sample_number=class_data_number,
-        augmentation=A.Compose([
-            A.VerticalFlip(p=1)
-        ]),
+        augmentation=CustomAugmentation.general_transform(),
         preprocessing=CustomAugmentation.to_tensor_transform()
     )
     class_dataset_list.append(class_dataset)
 
+    class_dataset_list = []
     class_dataset = CustomDatasetImage(
         images_dir=images_dir,
         masks_dir=masks_dir,
         sample_number=class_data_number,
-        augmentation=A.Compose([
-            A.HorizontalFlip(p=1)
-        ]),
+        augmentation=CustomAugmentation.shape_fixed_transform(),
         preprocessing=CustomAugmentation.to_tensor_transform()
     )
     class_dataset_list.append(class_dataset)
 
-    class_dataset = CustomDatasetImage(
-        images_dir=images_dir,
-        masks_dir=masks_dir,
-        sample_number=class_data_number,
-        augmentation=A.Compose([
-            A.RandomSizedCrop(min_max_height=(128, 256),
-                              height=512, width=512, p=1)
-        ]),
-        preprocessing=CustomAugmentation.to_tensor_transform()
-    )
-    class_dataset_list.append(class_dataset)
-
-    class_dataset = CustomDatasetImage(
-        images_dir=images_dir,
-        masks_dir=masks_dir,
-        sample_number=class_data_number,
-        augmentation=A.Compose([
-            A.GridDistortion(p=1)
-        ]),
-        preprocessing=CustomAugmentation.to_tensor_transform()
-    )
-    class_dataset_list.append(class_dataset)
-
-    class_dataset = CustomDatasetImage(
-        images_dir=images_dir,
-        masks_dir=masks_dir,
-        sample_number=class_data_number,
-        augmentation=A.Compose([
-            A.RandomGamma(p=1)
-        ]),
-        preprocessing=CustomAugmentation.to_tensor_transform()
-    )
-    class_dataset_list.append(class_dataset)
-
-    class_dataset = CustomDatasetImage(
-        images_dir=images_dir,
-        masks_dir=masks_dir,
-        sample_number=class_data_number,
-        augmentation=A.Compose([
-            A.ShiftScaleRotate(p=1)
-        ]),
-        preprocessing=CustomAugmentation.to_tensor_transform()
-    )
-    class_dataset_list.append(class_dataset)
+    # class_dataset_list = []
+    # class_dataset = CustomDatasetImage(
+    #     images_dir=images_dir,
+    #     masks_dir=masks_dir,
+    #     sample_number=class_data_number,
+    #     augmentation=CustomAugmentation.color_fixed_transform(),
+    #     preprocessing=CustomAugmentation.to_tensor_transform()
+    # )
+    # class_dataset_list.append(class_dataset)
 
     #
 

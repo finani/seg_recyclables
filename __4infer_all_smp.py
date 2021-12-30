@@ -68,7 +68,7 @@ if __name__ == "__main__":
     model = infer_manager.load_saved_model_weight(
         model=model,
         save_dir=save_dir,
-        model_file_name='best_model_1_0.pt'
+        model_file_name='best_model_1_15.pt'
     )
 
     # inference
